@@ -6,7 +6,12 @@
 .equ PORTB = 0x18
 .equ WDTCR = 0x21
 .equ CLKPR = 0x26
+.equ OCR0A = 0x29
+.equ OSCCAL = 0x31
+.equ TCNT0 = 0x32
+.equ TCCR0B = 0x33
 .equ GIMSK = 0x3b
+.equ TIMSK = 0x39
 .equ n64 = 0
 .equ gcc = 1
 .equ n64l = 3
@@ -30,50 +35,40 @@
 
 ; Bit bang a byte.
 .macro send_byte
-    ldi @2, 8
+    ldi gcc_0, 8
 ; Bit bang one bit.
 send_bit_%:
-    sbi DDRB, @1
-    sbrs @0, 7
+    sbi DDRB, @0
+    sbrs @1, 7
     rjmp send_0_%
-    .if @1 == gcc
+    .if @0 == gcc
         nop
     .endif
-    cbi DDRB, @1
+    cbi DDRB, @0
     rjmp send_end_%
 ; Bit bang a 0 bit.
 send_0_%:
     nop
     nop
     nop
-    .if @1 == gcc
+    .if @0 == gcc
         nop
     .endif
 ; Release the line and send another bit if required.
 send_end_%:
-    lsl @0
-    dec @2
+    lsl @1
+    dec gcc_0
     nop
     nop
-    .if @1 == gcc
+    .if @0 == gcc
         nop
         nop
     .endif
-    cbi DDRB, @1
-    .if @1 == gcc
+    cbi DDRB, @0
+    .if @0 == gcc
         nop
     .endif
     brne send_bit_%
-.endm
-
-; Bit bang a byte to gamecube controller.
-.macro gcc_send
-    send_byte @0, gcc, n64_3
-.endm
-
-; Bit bang a byte to N64 console.
-.macro n64_send
-    send_byte @0, n64, gcc_0
 .endm
 
 ; Bit bang N64 stop bit to the console.
@@ -83,28 +78,45 @@ send_end_%:
     rjmp n64_stop_wait
 .endm
 
-; Read bits from either N64 console or gamecube controller.
-.macro read_bits
-    ldi @2, @3
+; Read a bit from N64 console.
+.macro n64_read
+    sbrs gcc_0, 0
+    out OSCCAL, gcc_1
+    lsl gcc_0
+    in gcc_1, OSCCAL
+    delay_1_us
+    sbis PINB, n64
+    inc gcc_0
+    sbic PINB, n64
+    inc gcc_1
+    nop
+    nop
+    sbis PINB, n64
+    dec gcc_1
+.endm
+
+; Read bits from gamecube controller.
+.macro gcc_read_bits
+    ldi n64_0, @1
 ; Read one bit.
 read_bit_%:
-    lsl @1
+    lsl @0
     nop
     nop
     nop
     delay_1_us
-    sbis PINB, @0
-    inc @1
-    dec @2
+    sbis PINB, gcc
+    inc @0
+    dec n64_0
     nop
     nop
     nop
     brne read_bit_%
 .endm
 
-; Read a byte from either N64 console or gamecube controller.
-.macro read_byte
-    read_bits @0, @1, @2, 8
+; Read a byte from gamecube controller.
+.macro gcc_read
+    gcc_read_bits @0, 7
 .endm
 
 ; Reset vector.
@@ -115,15 +127,20 @@ read_bit_%:
 .org 0x0002
     rjmp pcint0
 
-; Watchdog timer interrupt when it is time to poll gamecube controller.
-.org 0x000c
-    ldi n64_0, 0x40
-    ldi n64_1, 0x00
-    ldi n64_2, 0x03
-    gcc_send n64_0
-    gcc_send n64_1
-    gcc_send n64_2
-    nop
+; TIMER0_COMPA interrupt when it is time to poll gamecube controller.
+.org 0x000a
+    dec gcc_1
+    brne poll_gcc
+    reti
+; Waited long enough to poll the controller.
+poll_gcc:
+    ldi gcc_1, 0x40
+    ldi gcc_2, 0x00
+    ldi gcc_3, 0x03
+    send_byte gcc, gcc_1
+    send_byte gcc, gcc_2
+    send_byte gcc, gcc_3
+    clr gcc_0
     sbi DDRB, gcc
     nop
     nop
@@ -133,7 +150,7 @@ read_bit_%:
 wait_for_low:
     sbis PINB, gcc
     rjmp read
-    dec gcc_1
+    dec gcc_0
     brne wait_for_low
 ; Read the gamecube response.
 read:
@@ -144,12 +161,12 @@ read:
     sbr gcc_0, 0
     nop
     delay_1_us
-    read_bits gcc, gcc_0, n64_0, 7
-    read_byte gcc, gcc_1, n64_0
-    read_byte gcc, n64_2, n64_0
-    read_byte gcc, n64_3, n64_0
-    read_byte gcc, gcc_2, n64_0
-    read_byte gcc, gcc_3, n64_0
+    gcc_read_bits gcc_0, 7
+    gcc_read gcc_1
+    gcc_read n64_2
+    gcc_read n64_3
+    gcc_read gcc_2
+    gcc_read gcc_3
     clr n64_0
     clr n64_1
     sbrc gcc_0, 0
@@ -176,6 +193,7 @@ read:
     sbr n64_1, 4
     sbrc gcc_1, 6
     sbr n64_1, 5
+    ldi gcc_1, 5
     cpi gcc_2, 64
     brge not_c_left
     sbr n64_1, 1
@@ -217,8 +235,17 @@ reset:
     sbi PCMSK, n64
     ldi gcc_0, 0x20
     out GIMSK, gcc_0
+    ldi gcc_0, 5
+    out TCCR0B, gcc_0
+    ldi gcc_0, 130
+    out OCR0A, gcc_0
     sbi DDRB, n64l
     sbi DDRB, gccl
+    clr n64_0
+    clr n64_1
+    clr n64_2
+    clr n64_3
+    ldi gcc_1, 5
     sei
 ; Sleep and let interrupts do the work.
 main:
@@ -230,38 +257,49 @@ pcint0:
     cbi PORTB, n64l
     cbi PORTB, gccl
     clr gcc_0
-    delay_1_us
-    read_bits n64, gcc_0, gcc_1, 7
-    delay_1_us
-    delay_1_us
-    nop
-    nop
+    in gcc_1, OSCCAL
+    n64_read
+    n64_read
+    n64_read
+    n64_read
+    n64_read
+    n64_read
+    n64_read
+    sbrs gcc_0, 0
+    out OSCCAL, gcc_1
+    tst gcc_0
+    breq status
+    cpi gcc_0, 0x7f
+    breq status
     cpi gcc_0, 1
-    brne status
-    rjmp poll
+    breq poll
+    reti
 ; Send status response.
 status:
     sbi PORTB, n64l
-    ldi n64_0, 5
-    ldi n64_1, 0
-    ldi n64_2, 2
+    ldi gcc_1, 5
+    ldi gcc_2, 0
+    ldi gcc_3, 2
     nop
     nop
-    n64_send n64_0
-    n64_send n64_1
-    n64_send n64_2
+    nop
+    nop
+    nop
+    send_byte n64, gcc_1
+    send_byte n64, gcc_2
+    send_byte n64, gcc_3
     n64_send_stop
 ; Send poll response.
 poll:
     sbi PORTB, gccl
-    ldi gcc_0, 0x18
-    out WDTCR, gcc_0
-    ldi gcc_0, 0x40
-    out WDTCR, gcc_0
-    n64_send n64_0
-    n64_send n64_1
-    n64_send n64_2
-    n64_send n64_3
+    clr gcc_0
+    out TCNT0, gcc_0
+    sbr gcc_0, 4
+    out TIMSK, gcc_0
+    send_byte n64, n64_0
+    send_byte n64, n64_1
+    send_byte n64, n64_2
+    send_byte n64, n64_3
     n64_send_stop
 ; Releases the N64 data line and returns.
 n64_stop_wait:
