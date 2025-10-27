@@ -1,11 +1,15 @@
 ; Adapter to convert gamecube controller to N64.
-.equ STUB_GCC = 1
-;.device attiny9
-;.equ TINY9 = 1
-.device attiny25
+;.equ STUB_GCC = 1
+.device attiny9
+.equ T9 = 1
+;.device attiny25
 
 ; Hardware Abstraction Layer.
-.ifdef TINY9
+.ifdef T9
+    ; Interrupt vector mapping.
+    .equ PCINT0 = 0x0002
+    .equ TIM0_COMPA = 0x0005
+
     ; Register mapping.
     .equ PINB = 0x00
     .equ DDRB = 0x01
@@ -17,6 +21,7 @@
     .equ TCNT0L = 0x28
     .equ TIMSK0 = 0x2b
     .equ TCCR0B = 0x2d
+    .equ TCCR0A = 0x2e
     .equ CLKPSR = 0x36
     .equ OSCCAL = 0x39
     .equ SMCR = 0x3a
@@ -41,6 +46,10 @@
         cbi @0, @1
     .endm
 .else
+    ; Interrupt vector mapping.
+    .equ PCINT0 = 0x0002
+    .equ TIM0_COMPA = 0x000a
+
     ; Register mapping.
     .equ PINB = 0x16
     .equ DDRB = 0x17
@@ -51,6 +60,7 @@
     .equ OCR0AL = 0x29
     .equ TCNT0L = 0x32
     .equ TIMSK0 = 0x39
+    .equ TCCR0A = 0x2a
     .equ TCCR0B = 0x33
     .equ CLKPSR = 0x26
     .equ OSCCAL = 0x31
@@ -171,11 +181,11 @@ read_bit_%:
     rjmp reset
 
 ; Pin change interrupt when N64 console sends a request.
-.org 0x0002
-    rjmp pcint0
+.org PCINT0
+    rjmp n64_request
 
-; TIMER0_COMPA interrupt when it is time to poll gamecube controller.
-.org 0x000a
+; Interrupt when it is time to poll gamecube controller.
+.org TIM0_COMPA
     ldi gcc_1, 0x40
     ldi gcc_2, 0x00
     ldi gcc_3, 0x03
@@ -288,6 +298,8 @@ reset:
     set_bit PCMSK, n64
     ldi gcc_0, 1 << PCIE0
     out PCICR, gcc_0
+    ldi gcc_0, 2
+    out TCCR0A, gcc_0
     ldi gcc_0, 5
     out TCCR0B, gcc_0
     ldi gcc_0, 64
@@ -306,12 +318,9 @@ main:
     rjmp main
 
 ; React to N64 request.
-pcint0:
-    delay_1_us
-    nop
+n64_request:
     read_bits n64, gcc_0, gcc_1, 7
-    nop
-    delay_1_us
+    andi gcc_0, 0x7f
     tst gcc_0
     breq status
     cpi gcc_0, 0x7f
@@ -319,21 +328,21 @@ pcint0:
     cpi gcc_0, 1
     breq poll
 ; Clear interrupt flag and exit.
-pcint0_done:
+n64_request_done:
     delay_1_us
     clr_bit DDRB, n64
-    delay_1_us
+    nop
+    nop
     ldi gcc_0, 1 << PCIF0
     out PCIFR, gcc_0
     reti
 ; Send status response.
 status:
-    set_bit PORTB, led
+    set_bit PINB, led
     ldi n64_1, 5
     ldi n64_2, 0
     ldi n64_3, 2
-    nop
-    rjmp pcint0_send_1
+    rjmp n64_send_1
 ; Send poll response.
 poll:
     clr gcc_0
@@ -342,10 +351,10 @@ poll:
     out TIMSK0, gcc_0
     send_byte n64, n64_0
 ; Send remaining response bytes.
-pcint0_send_1:
+n64_send_1:
     send_byte n64, n64_1
     send_byte n64, n64_2
     send_byte n64, n64_3
     nop
     set_bit DDRB, n64
-    rjmp pcint0_done
+    rjmp n64_request_done

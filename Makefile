@@ -4,9 +4,9 @@
 gc2n64.s.hex: gc2n64.s
 	avra $<
 
-# Write program to attiny85 over USB.
+# Write program to attiny9 over tagconnect.
 flash: gc2n64.s.hex
-	avrdude -c usbasp -p t85 -U flash:w:$<
+	avrdude -c avrispmkii -p t9 -U flash:w:$<
 
 # Delete assembler output.
 clean:
