@@ -13,7 +13,6 @@
     ; Register mapping.
     .equ PINB = 0x00
     .equ DDRB = 0x01
-    .equ PORTB = 0x02
     .equ PCMSK = 0x10
     .equ PCIFR = 0x11
     .equ PCICR = 0x12
@@ -23,7 +22,6 @@
     .equ TCCR0B = 0x2d
     .equ TCCR0A = 0x2e
     .equ CLKPSR = 0x36
-    .equ OSCCAL = 0x39
     .equ SMCR = 0x3a
     .equ CCP = 0x3c
 
@@ -53,7 +51,6 @@
     ; Register mapping.
     .equ PINB = 0x16
     .equ DDRB = 0x17
-    .equ PORTB = 0x18
     .equ PCMSK = 0x15
     .equ PCIFR = 0x3a
     .equ PCICR = 0x3b
@@ -63,7 +60,6 @@
     .equ TCCR0A = 0x2a
     .equ TCCR0B = 0x33
     .equ CLKPSR = 0x26
-    .equ OSCCAL = 0x31
     .equ SMCR = 0x35
     .equ CCP = CLKPSR
 
