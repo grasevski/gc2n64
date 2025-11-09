@@ -18,9 +18,8 @@
     .equ PCICR = 0x12
     .equ OCR0AL = 0x26
     .equ TCNT0L = 0x28
+    .equ TIFR0 = 0x2a
     .equ TIMSK0 = 0x2b
-    .equ TCCR0B = 0x2d
-    .equ TCCR0A = 0x2e
     .equ CLKPSR = 0x36
     .equ SMCR = 0x3a
     .equ CCP = 0x3c
@@ -29,6 +28,7 @@
     .equ PCIE0 = 0
     .equ SE = 0
     .equ SIG = 0xd8
+    .equ OCF0A = 1
     .equ OCIE0A = 1
     .equ PCIF0 = 0
 
@@ -43,6 +43,12 @@
         nop
         cbi @0, @1
     .endm
+
+    ; Sets up timer for gamecube interrupt.
+    .macro tmr_init
+        ldi gcc_0, 13
+        out 0x2d, gcc_0
+    .endm
 .else
     ; Interrupt vector mapping.
     .equ PCINT0 = 0x0002
@@ -56,9 +62,8 @@
     .equ PCICR = 0x3b
     .equ OCR0AL = 0x29
     .equ TCNT0L = 0x32
+    .equ TIFR0 = 0x38
     .equ TIMSK0 = 0x39
-    .equ TCCR0A = 0x2a
-    .equ TCCR0B = 0x33
     .equ CLKPSR = 0x26
     .equ SMCR = 0x35
     .equ CCP = CLKPSR
@@ -67,6 +72,7 @@
     .equ PCIE0 = 5
     .equ SE = 5
     .equ SIG = 1 << 7
+    .equ OCF0A = 4
     .equ OCIE0A = 4
     .equ PCIF0 = 5
 
@@ -78,6 +84,14 @@
     ; Wrapper to ensure cycle counts match.
     .macro clr_bit
         cbi @0, @1
+    .endm
+
+    ; Sets up timer for gamecube interrupt.
+    .macro tmr_init
+        ldi gcc_0, 2
+        out 0x2a, gcc_0
+        ldi gcc_0, 5
+        out 0x33, gcc_0
     .endm
 .endif
 
@@ -183,8 +197,8 @@ read_bit_%:
 ; Interrupt when it is time to poll gamecube controller.
 .org TIM0_COMPA
     ldi gcc_1, 0x40
-    ldi gcc_2, 0x00
-    ldi gcc_3, 0x03
+    ldi gcc_2, 0x03
+    clr gcc_3
     send_byte gcc, gcc_1
     send_byte gcc, gcc_2
     send_byte gcc, gcc_3
@@ -294,11 +308,8 @@ reset:
     set_bit PCMSK, n64
     ldi gcc_0, 1 << PCIE0
     out PCICR, gcc_0
-    ldi gcc_0, 2
-    out TCCR0A, gcc_0
-    ldi gcc_0, 5
-    out TCCR0B, gcc_0
-    ldi gcc_0, 64
+    tmr_init
+    ldi gcc_0, 50
     out OCR0AL, gcc_0
     ldi gcc_0, 1 << SE
     out SMCR, gcc_0
@@ -343,7 +354,9 @@ status:
 poll:
     clr gcc_0
     out TCNT0L, gcc_0
-    sbr gcc_0, OCIE0A
+    ldi gcc_0, 1 << OCF0A
+    out TIFR0, gcc_0
+    ldi gcc_0, 1 << OCIE0A
     out TIMSK0, gcc_0
     send_byte n64, n64_0
 ; Send remaining response bytes.
