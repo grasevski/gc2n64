@@ -132,9 +132,6 @@ send_bit_%:
     set_bit DDRB, @0
     sbrs @1, 7
     rjmp send_0_%
-    .if @0 == gcc
-        nop
-    .endif
     clr_bit DDRB, @0
     rjmp send_end_%
 ; Bit bang a 0 bit.
@@ -142,23 +139,13 @@ send_0_%:
     nop
     nop
     nop
-    .if @0 == gcc
-        nop
-    .endif
 ; Release the line and send another bit if required.
 send_end_%:
     lsl @1
     dec gcc_0
     nop
     nop
-    .if @0 == gcc
-        nop
-        nop
-    .endif
     clr_bit DDRB, @0
-    .if @0 == gcc
-        nop
-    .endif
     brne send_bit_%
 .endm
 
@@ -186,6 +173,16 @@ read_bit_%:
     read_bits gcc, @0, n64_0, 8
 .endm
 
+; Detect the start of the gamecube controller response.
+.macro wait_for_low
+    ; Unrolled busy wait loop.
+    .if @0 > 0
+        sbis PINB, gcc
+        rjmp read
+        wait_for_low @0 - 1
+    .endif
+.endm
+
 ; Reset vector.
 .org 0x0000
     rjmp reset
@@ -204,26 +201,18 @@ read_bit_%:
     send_byte gcc, gcc_3
     clr gcc_0
     set_bit DDRB, gcc
-    nop
+    clr n64_1
     nop
     nop
     clr_bit DDRB, gcc
-; Detect the start of the gamecube controller response.
-wait_for_low:
-    sbis PINB, gcc
-    rjmp read
-    dec gcc_0
-    brne wait_for_low
+    wait_for_low 4
 ; Read the gamecube response.
 read:
-    clr gcc_0
-    clr n64_1
-    nop
+    delay_1_us
     sbis PINB, gcc
     inc gcc_0
-    nop
-    nop
     delay_1_us
+    nop
     read_bits gcc, gcc_0, n64_0, 7
     gcc_read gcc_1
     gcc_read n64_2
