@@ -152,17 +152,19 @@ send_end_%:
 ; Read several bits.
 .macro read_bits
     ldi @2, @3
-; Read one bit.
+; Wait until the line is low.
 read_bit_%:
+    sbis PINB, @0
+    rjmp read_bit_value_%
+    sbic PINB, @0
+    rjmp read_bit_value_%
+; Read one bit.
+read_bit_value_%:
     lsl @1
-    nop
-    nop
-    nop
     delay_1_us
     sbic PINB, @0
     inc @1
     dec @2
-    nop
     nop
     nop
     brne read_bit_%
@@ -171,16 +173,6 @@ read_bit_%:
 ; Read a byte from gamecube controller.
 .macro gcc_read
     read_bits gcc, @0, n64_0, 8
-.endm
-
-; Detect the start of the gamecube controller response.
-.macro wait_for_low
-    ; Unrolled busy wait loop.
-    .if @0 > 0
-        sbis PINB, gcc
-        rjmp read
-        wait_for_low @0 - 1
-    .endif
 .endm
 
 ; Reset vector.
@@ -203,17 +195,10 @@ read_bit_%:
     set_bit DDRB, gcc
     clr n64_1
     nop
-    nop
     clr_bit DDRB, gcc
-    wait_for_low 4
-; Read the gamecube response.
-read:
-    delay_1_us
-    sbis PINB, gcc
-    inc gcc_0
     delay_1_us
     nop
-    read_bits gcc, gcc_0, n64_0, 7
+    gcc_read gcc_0
     gcc_read gcc_1
     gcc_read n64_2
     gcc_read n64_3
@@ -255,24 +240,23 @@ read:
     sbr n64_1, 4
     sbrc gcc_1, 6
     sbr n64_1, 5
-    ldi gcc_1, 5
     cpi gcc_2, 64
-    brge not_c_left
+    brsh not_c_left
     sbr n64_1, 1
 ; Right stick is not pushed to the left.
 not_c_left:
     cpi gcc_2, 192
-    brlt not_c_right
+    brlo not_c_right
     sbr n64_1, 0
 ; Right stick is not pushed to the right.
 not_c_right:
     cpi gcc_3, 64
-    brge not_c_down
+    brsh not_c_down
     sbr n64_1, 2
 ; Right stick is not pushed downwards.
 not_c_down:
     cpi gcc_3, 192
-    brlt not_c_up
+    brlo not_c_up
     sbr n64_1, 3
 ; Right stick is not pushed upwards.
 not_c_up:
