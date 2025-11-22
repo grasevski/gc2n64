@@ -149,6 +149,13 @@ send_end_%:
     brne send_bit_%
 .endm
 
+; Finish N64 response.
+.macro send_stop
+    nop
+    set_bit DDRB, n64
+    rjmp n64_request_done
+.endm
+
 ; Read several bits.
 .macro read_bits
     ldi @2, @3
@@ -161,10 +168,12 @@ read_bit_%:
 ; Read one bit.
 read_bit_value_%:
     lsl @1
-    delay_1_us
+    nop
+    set_bit PINB, led
     sbic PINB, @0
     inc @1
     dec @2
+    nop
     nop
     nop
     brne read_bit_%
@@ -173,6 +182,16 @@ read_bit_value_%:
 ; Read a byte from gamecube controller.
 .macro gcc_read
     read_bits gcc, @0, n64_0, 8
+.endm
+
+; Busy wait until the line is driven low.
+.macro wait_for_low
+    ; Unroll the busy loop for faster response time.
+    .if @0 > 1
+        sbis PINB, gcc
+        rjmp read_bit_value
+        wait_for_low @0 - 1
+    .endif
 .endm
 
 ; Reset vector.
@@ -197,6 +216,7 @@ read_bit_value_%:
     nop
     clr_bit DDRB, gcc
     delay_1_us
+    nop
     nop
     gcc_read gcc_0
     gcc_read gcc_1
@@ -306,10 +326,10 @@ n64_request:
     cpi gcc_0, 0x7f
     breq status
     cpi gcc_0, 1
-    breq poll
+    brne n64_request_done
+    rjmp poll
 ; Clear interrupt flag and exit.
 n64_request_done:
-    delay_1_us
     clr_bit DDRB, n64
     nop
     nop
@@ -319,10 +339,13 @@ n64_request_done:
 ; Send status response.
 status:
     set_bit PINB, led
-    ldi n64_1, 5
-    ldi n64_2, 0
-    ldi n64_3, 2
-    rjmp n64_send_1
+    ldi gcc_1, 5
+    ldi gcc_2, 0
+    ldi gcc_3, 2
+    send_byte n64, gcc_1
+    send_byte n64, gcc_2
+    send_byte n64, gcc_3
+    send_stop
 ; Send poll response.
 poll:
     clr gcc_0
@@ -332,11 +355,7 @@ poll:
     ldi gcc_0, 1 << OCIE0A
     out TIMSK0, gcc_0
     send_byte n64, n64_0
-; Send remaining response bytes.
-n64_send_1:
     send_byte n64, n64_1
     send_byte n64, n64_2
     send_byte n64, n64_3
-    nop
-    set_bit DDRB, n64
-    rjmp n64_request_done
+    send_stop
