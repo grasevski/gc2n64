@@ -116,6 +116,12 @@
 .def gcc_cx = r22
 .def gcc_cy = r23
 
+; Gamecube controller X offset.
+.def gcc_ox = r24
+
+; Gamecube controller Y offset.
+.def gcc_oy = r25
+
 ; gcc_0 button mappings.
 .equ gcc_0_a = 0
 .equ gcc_0_b = 1
@@ -156,9 +162,6 @@
 
 ; High threshold for button press.
 .equ analog_hi = 192
-
-; Midpoint for gamecube analog.
-.equ analog_mid = 128
 
 ; Map the same button on gamecube to N64.
 .macro map
@@ -245,16 +248,6 @@ read_bit_value_%:
     read_bits gcc, @0, n64_0, 8
 .endm
 
-; Busy wait until the line is driven low.
-.macro wait_for_low
-    ; Unroll the busy loop for faster response time.
-    .if @0 > 1
-        sbis PINB, gcc
-        rjmp read_bit_value
-        wait_for_low @0 - 1
-    .endif
-.endm
-
 ; Reset vector.
 .org 0x0000
     rjmp reset
@@ -293,8 +286,8 @@ read_bit_value_%:
         clr gcc_1
         clr gcc_cx
         clr gcc_cy
-        ldi n64_x, analog_mid
-        ldi n64_y, analog_mid
+        ldi n64_x, 128
+        ldi n64_y, 128
     .endif
 
     map a, n64_0, gcc_0
@@ -328,8 +321,14 @@ not_c_down:
     set_c u
 ; Right stick is not pushed upwards.
 not_c_up:
-    subi n64_x, analog_mid
-    subi n64_y, analog_mid
+    tst gcc_ox
+    brne calibrated
+    mov gcc_ox, n64_x
+    mov gcc_oy, n64_y
+; Gamecube analog is calibrated.
+calibrated:
+    sub n64_x, gcc_ox
+    sub n64_y, gcc_oy
     sbrs n64_0, n64_0_s
     reti
     sbrs n64_1, n64_1_r
@@ -359,6 +358,8 @@ reset:
     clr n64_1
     clr n64_x
     clr n64_y
+    clr gcc_ox
+    clr gcc_oy
     sei
 ; Sleep and let interrupts do the work.
 main:
