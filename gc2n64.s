@@ -107,14 +107,74 @@
 ; N64 response buffer.
 .def n64_0 = r16
 .def n64_1 = r17
-.def n64_2 = r18
-.def n64_3 = r19
+.def n64_x = r18
+.def n64_y = r19
 
 ; Gamecube controller temp variables.
 .def gcc_0 = r20
 .def gcc_1 = r21
-.def gcc_2 = r22
-.def gcc_3 = r23
+.def gcc_cx = r22
+.def gcc_cy = r23
+
+; gcc_0 button mappings.
+.equ gcc_0_a = 0
+.equ gcc_0_b = 1
+.equ gcc_0_x = 2
+.equ gcc_0_y = 3
+.equ gcc_0_s = 4
+
+; gcc_1 button mappings.
+.equ gcc_1_left = 0
+.equ gcc_1_right = 1
+.equ gcc_1_down = 2
+.equ gcc_1_up = 3
+.equ gcc_1_z = 4
+.equ gcc_1_r = 5
+.equ gcc_1_l = 6
+
+; n64_0 button mappings.
+.equ n64_0_a = 7
+.equ n64_0_b = 6
+.equ n64_0_z = 5
+.equ n64_0_s = 4
+.equ n64_0_up = 3
+.equ n64_0_down = 2
+.equ n64_0_left = 1
+.equ n64_0_right = 0
+
+; n64_1 button mappings.
+.equ n64_1_reset = 7
+.equ n64_1_l = 5
+.equ n64_1_r = 4
+.equ n64_1_cu = 3
+.equ n64_1_cd = 2
+.equ n64_1_cl = 1
+.equ n64_1_cr = 0
+
+; Low threshold for button press.
+.equ analog_lo = 64
+
+; High threshold for button press.
+.equ analog_hi = 192
+
+; Midpoint for gamecube analog.
+.equ analog_mid = 128
+
+; Map the same button on gamecube to N64.
+.macro map
+    map_button @1, @0, @2, @0
+.endm
+
+; Map a button on gamecube to N64.
+.macro map_button
+    sbrc @2, @2_@3
+    ori @0, 1 << @0_@1
+.endm
+
+; Set a C button on N64.
+.macro set_c
+    ori n64_1, 1 << n64_1_c@0
+.endm
 
 ; 4 NOPs at 4MHz is 1 microsecond.
 .macro delay_1_us
@@ -169,7 +229,8 @@ read_bit_%:
 read_bit_value_%:
     lsl @1
     nop
-    set_bit PINB, led
+    nop
+    nop
     sbic PINB, @0
     inc @1
     dec @2
@@ -205,11 +266,11 @@ read_bit_value_%:
 ; Interrupt when it is time to poll gamecube controller.
 .org TIM0_COMPA
     ldi gcc_1, 0x40
-    ldi gcc_2, 0x03
-    clr gcc_3
+    ldi gcc_cx, 0x03
+    clr gcc_cy
     send_byte gcc, gcc_1
-    send_byte gcc, gcc_2
-    send_byte gcc, gcc_3
+    send_byte gcc, gcc_cx
+    send_byte gcc, gcc_cy
     clr gcc_0
     set_bit DDRB, gcc
     clr n64_1
@@ -220,76 +281,63 @@ read_bit_value_%:
     nop
     gcc_read gcc_0
     gcc_read gcc_1
-    gcc_read n64_2
-    gcc_read n64_3
-    gcc_read gcc_2
-    gcc_read gcc_3
+    gcc_read n64_x
+    gcc_read n64_y
+    gcc_read gcc_cx
+    gcc_read gcc_cy
     clr n64_0
 
     ; Put in all zero values for gamecube controller.
     .ifdef STUB_GCC
         clr gcc_0
         clr gcc_1
-        clr gcc_2
-        clr gcc_3
-        ldi n64_2, 128
-        ldi n64_3, 128
+        clr gcc_cx
+        clr gcc_cy
+        ldi n64_x, analog_mid
+        ldi n64_y, analog_mid
     .endif
 
-    sbrc gcc_0, 0
-    sbr n64_0, 7
-    sbrc gcc_0, 1
-    sbr n64_0, 6
-    sbrc gcc_0, 2
-    sbr n64_1, 2
-    sbrc gcc_0, 3
-    sbr n64_1, 3
-    sbrc gcc_0, 4
-    sbr n64_0, 4
-    sbrc gcc_1, 0
-    sbr n64_0, 1
-    sbrc gcc_1, 1
-    sbr n64_0, 0
-    sbrc gcc_1, 2
-    sbr n64_0, 2
-    sbrc gcc_1, 3
-    sbr n64_0, 3
-    sbrc gcc_1, 4
-    sbr n64_0, 5
-    sbrc gcc_1, 5
-    sbr n64_1, 4
-    sbrc gcc_1, 6
-    sbr n64_1, 5
-    cpi gcc_2, 64
+    map a, n64_0, gcc_0
+    map b, n64_0, gcc_0
+    map_button n64_0, z, gcc_1, l
+    map s, n64_0, gcc_0
+    map up, n64_0, gcc_1
+    map down, n64_0, gcc_1
+    map left, n64_0, gcc_1
+    map right, n64_0, gcc_1
+    map_button n64_1, l, gcc_0, y
+    map r, n64_1, gcc_1
+    map_button n64_1, cd, gcc_0, x
+    cpi gcc_cx, analog_lo
     brsh not_c_left
-    sbr n64_1, 1
+    set_c l
 ; Right stick is not pushed to the left.
 not_c_left:
-    cpi gcc_2, 192
+    cpi gcc_cx, analog_hi
     brlo not_c_right
-    sbr n64_1, 0
+    set_c r
 ; Right stick is not pushed to the right.
 not_c_right:
-    cpi gcc_3, 64
+    cpi gcc_cy, analog_lo
     brsh not_c_down
-    sbr n64_1, 2
+    set_c d
 ; Right stick is not pushed downwards.
 not_c_down:
-    cpi gcc_3, 192
+    cpi gcc_cy, analog_hi
     brlo not_c_up
-    sbr n64_1, 3
+    set_c u
 ; Right stick is not pushed upwards.
 not_c_up:
-    subi n64_2, 128
-    subi n64_3, 128
-    sbrs n64_0, 4
+    subi n64_x, analog_mid
+    subi n64_y, analog_mid
+    sbrs n64_0, n64_0_s
     reti
-    sbrs n64_1, 4
+    sbrs n64_1, n64_1_r
     reti
-    sbrs n64_1, 5
+    sbrs n64_1, n64_1_l
     reti
-    cbr n64_0, 4
-    sbr n64_1, 7
+    andi n64_0, ~(1 << n64_0_s)
+    ori n64_1, 1 << n64_1_reset
     reti
 
 ; Configures registers.
@@ -309,8 +357,8 @@ reset:
     set_bit DDRB, led
     clr n64_0
     clr n64_1
-    clr n64_2
-    clr n64_3
+    clr n64_x
+    clr n64_y
     sei
 ; Sleep and let interrupts do the work.
 main:
@@ -340,11 +388,11 @@ n64_request_done:
 status:
     set_bit PINB, led
     ldi gcc_1, 5
-    ldi gcc_2, 0
-    ldi gcc_3, 2
+    ldi gcc_cx, 0
+    ldi gcc_cy, 2
     send_byte n64, gcc_1
-    send_byte n64, gcc_2
-    send_byte n64, gcc_3
+    send_byte n64, gcc_cx
+    send_byte n64, gcc_cy
     send_stop
 ; Send poll response.
 poll:
@@ -356,6 +404,6 @@ poll:
     out TIMSK0, gcc_0
     send_byte n64, n64_0
     send_byte n64, n64_1
-    send_byte n64, n64_2
-    send_byte n64, n64_3
+    send_byte n64, n64_x
+    send_byte n64, n64_y
     send_stop
