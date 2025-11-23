@@ -24,7 +24,7 @@
     .equ SMCR = 0x3a
     .equ CCP = 0x3c
 
-    ; Peripheral pin mapping.
+    ; Peripheral bit mapping.
     .equ PCIE0 = 0
     .equ SE = 0
     .equ SIG = 0xd8
@@ -68,7 +68,7 @@
     .equ SMCR = 0x35
     .equ CCP = CLKPSR
 
-    ; Peripheral pin mapping.
+    ; Peripheral bit mapping.
     .equ PCIE0 = 5
     .equ SE = 5
     .equ SIG = 1 << 7
@@ -95,13 +95,9 @@
     .endm
 .endif
 
-; N64 data pin.
+; Pin mapping.
 .equ n64 = 0
-
-; Gamecube controller data pin.
 .equ gcc = 1
-
-; LED status pin.
 .equ led = 2
 
 ; N64 response buffer.
@@ -115,11 +111,7 @@
 .def gcc_1 = r21
 .def gcc_cx = r22
 .def gcc_cy = r23
-
-; Gamecube controller X offset.
 .def gcc_ox = r24
-
-; Gamecube controller Y offset.
 .def gcc_oy = r25
 
 ; gcc_0 button mappings.
@@ -157,11 +149,10 @@
 .equ n64_1_cl = 1
 .equ n64_1_cr = 0
 
-; Low threshold for button press.
+; Thresholds for button press.
 .equ analog_lo = 64
-
-; High threshold for button press.
 .equ analog_hi = 192
+.equ analog_mid = 128
 
 ; Map the same button on gamecube to N64.
 .macro map
@@ -286,8 +277,8 @@ read_bit_value_%:
         clr gcc_1
         clr gcc_cx
         clr gcc_cy
-        ldi n64_x, 128
-        ldi n64_y, 128
+        ldi n64_x, analog_mid
+        ldi n64_y, analog_mid
     .endif
 
     map a, n64_0, gcc_0
